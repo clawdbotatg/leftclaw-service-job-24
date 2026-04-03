@@ -21,7 +21,7 @@ interface TokenBalancesPanelProps {
 }
 
 export function TokenBalancesPanel({ onSelectToken }: TokenBalancesPanelProps) {
-  const { data: tokens } = useScaffoldReadContract({
+  const { data: tokens, isLoading } = useScaffoldReadContract({
     contractName: "TreasuryManagerV2",
     functionName: "getKnownTokens",
   });
@@ -30,53 +30,59 @@ export function TokenBalancesPanel({ onSelectToken }: TokenBalancesPanelProps) {
     <div className="card bg-base-100 shadow-xl">
       <div className="card-body">
         <h2 className="card-title">Token Balances</h2>
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>Token</th>
-                <th>Balance</th>
-                <th>Type</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens?.map((token: any, i: number) => {
-                const name = TOKEN_NAMES[token.token] || token.token.slice(0, 8);
-                const isUSDC = token.token === "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-                const balance = isUSDC
-                  ? formatUnits(token.currentBalance, 6)
-                  : formatEther(token.currentBalance);
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <span className="loading loading-spinner loading-lg"></span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Token</th>
+                  <th>Balance</th>
+                  <th>Type</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tokens?.map((token: any, i: number) => {
+                  const name = TOKEN_NAMES[token.token] || token.token.slice(0, 8);
+                  const isUSDC = token.token === "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+                  const balance = isUSDC
+                    ? formatUnits(token.currentBalance, 6)
+                    : formatEther(token.currentBalance);
 
-                return (
-                  <tr key={i} className="hover">
-                    <td className="font-mono">{name}</td>
-                    <td>{Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td>
-                      {token.isCore ? (
-                        <span className="badge badge-sm badge-primary">Core</span>
-                      ) : token.isV4 ? (
-                        <span className="badge badge-sm badge-accent">V4</span>
-                      ) : (
-                        <span className="badge badge-sm badge-secondary">V3</span>
-                      )}
-                    </td>
-                    <td>
-                      {!token.isCore && (
-                        <button
-                          className="btn btn-xs btn-ghost"
-                          onClick={() => onSelectToken(token.token)}
-                        >
-                          Details
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                  return (
+                    <tr key={i} className="hover">
+                      <td className="font-mono">{name}</td>
+                      <td>{Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                      <td>
+                        {token.isCore ? (
+                          <span className="badge badge-sm badge-primary">Core</span>
+                        ) : token.isV4 ? (
+                          <span className="badge badge-sm badge-accent">V4</span>
+                        ) : (
+                          <span className="badge badge-sm badge-secondary">V3</span>
+                        )}
+                      </td>
+                      <td>
+                        {!token.isCore && (
+                          <button
+                            className="btn btn-xs btn-ghost"
+                            onClick={() => onSelectToken(token.token)}
+                          >
+                            Details
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

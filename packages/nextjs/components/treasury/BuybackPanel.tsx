@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseEther } from "viem";
 import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 export function BuybackPanel() {
   const [amount, setAmount] = useState("");
@@ -13,7 +14,8 @@ export function BuybackPanel() {
   });
 
   const handleBuyback = async () => {
-    if (!amount || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -21,8 +23,9 @@ export function BuybackPanel() {
         args: [parseEther(amount)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      notification.success("Buyback (WETH → TUSD) executed");
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Transaction failed");
     } finally {
       setIsPending(false);
     }
@@ -36,6 +39,7 @@ export function BuybackPanel() {
           <label className="label"><span className="label-text">WETH Amount</span></label>
           <input
             type="number"
+            min="0"
             step="0.01"
             className="input input-bordered w-full"
             placeholder="0.5"
@@ -47,7 +51,7 @@ export function BuybackPanel() {
         <button
           className={`btn btn-primary mt-2 ${isPending ? "loading" : ""}`}
           onClick={handleBuyback}
-          disabled={isPending || !amount}
+          disabled={isPending || !amount || parseFloat(amount) <= 0}
         >
           {isPending ? "Executing..." : "Execute Buyback"}
         </button>

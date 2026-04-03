@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseEther, formatEther } from "viem";
 import { useScaffoldWriteContract, useScaffoldReadContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 const STRATEGIC_TOKENS = [
   { name: "BNKR", address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b" as const },
@@ -23,14 +24,15 @@ export function PermissionlessPanel() {
     contractName: "TreasuryManagerV2",
   });
 
-  const { data: tokenInfo } = useScaffoldReadContract({
+  const { data: tokenInfo, isLoading } = useScaffoldReadContract({
     contractName: "TreasuryManagerV2",
     functionName: "getKnownToken",
     args: [selectedToken],
   });
 
   const handlePermissionless = async () => {
-    if (!amount || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -38,8 +40,10 @@ export function PermissionlessPanel() {
         args: [selectedToken, parseEther(amount)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      const name = STRATEGIC_TOKENS.find(t => t.address === selectedToken)?.name || "token";
+      notification.success(`Permissionless rebalance of ${amount} ${name} executed`);
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Transaction failed");
     } finally {
       setIsPending(false);
     }
@@ -68,7 +72,11 @@ export function PermissionlessPanel() {
           </select>
         </div>
 
-        {tokenInfo && (
+        {isLoading ? (
+          <div className="flex justify-center py-4">
+            <span className="loading loading-spinner loading-md"></span>
+          </div>
+        ) : tokenInfo ? (
           <div className="stats stats-vertical shadow mt-2">
             <div className="stat">
               <div className="stat-title">Fallback Unlock</div>
@@ -81,12 +89,13 @@ export function PermissionlessPanel() {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         <div className="form-control mt-2">
           <label className="label"><span className="label-text">Amount</span></label>
           <input
             type="number"
+            min="0"
             className="input input-bordered w-full"
             placeholder="1000"
             value={amount}
@@ -97,7 +106,7 @@ export function PermissionlessPanel() {
         <button
           className={`btn btn-accent mt-2 ${isPending ? "loading" : ""}`}
           onClick={handlePermissionless}
-          disabled={isPending || !amount}
+          disabled={isPending || !amount || parseFloat(amount) <= 0}
         >
           {isPending ? "Executing..." : "Permissionless Rebalance"}
         </button>

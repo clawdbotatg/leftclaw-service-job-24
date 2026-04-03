@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { parseEther } from "viem";
 import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 export function StakePanel() {
   const [amount, setAmount] = useState("");
-  const [poolId, setPoolId] = useState("");
+  const [poolId, setPoolId] = useState("0");
   const [isPending, setIsPending] = useState(false);
 
   const { writeContractAsync } = useScaffoldWriteContract({
@@ -14,7 +15,8 @@ export function StakePanel() {
   });
 
   const handleStake = async () => {
-    if (!amount || !poolId || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -22,15 +24,17 @@ export function StakePanel() {
         args: [parseEther(amount), BigInt(poolId)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      notification.success(`Staked ${amount} TUSD in pool ${poolId}`);
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Stake failed");
     } finally {
       setIsPending(false);
     }
   };
 
   const handleUnstake = async () => {
-    if (!amount || !poolId || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -38,8 +42,9 @@ export function StakePanel() {
         args: [parseEther(amount), BigInt(poolId)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      notification.success(`Unstaked ${amount} TUSD from pool ${poolId}`);
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Unstake failed");
     } finally {
       setIsPending(false);
     }
@@ -53,6 +58,7 @@ export function StakePanel() {
           <label className="label"><span className="label-text">TUSD Amount</span></label>
           <input
             type="number"
+            min="0"
             className="input input-bordered w-full"
             placeholder="1000000"
             value={amount}
@@ -64,6 +70,7 @@ export function StakePanel() {
           <label className="label"><span className="label-text">Pool ID</span></label>
           <input
             type="number"
+            min="0"
             className="input input-bordered w-full"
             placeholder="0"
             value={poolId}
@@ -75,14 +82,14 @@ export function StakePanel() {
           <button
             className={`btn btn-primary flex-1 ${isPending ? "loading" : ""}`}
             onClick={handleStake}
-            disabled={isPending || !amount || !poolId}
+            disabled={isPending || !amount || parseFloat(amount) <= 0}
           >
             {isPending ? "..." : "Stake"}
           </button>
           <button
             className={`btn btn-secondary flex-1 ${isPending ? "loading" : ""}`}
             onClick={handleUnstake}
-            disabled={isPending || !amount || !poolId}
+            disabled={isPending || !amount || parseFloat(amount) <= 0}
           >
             {isPending ? "..." : "Unstake"}
           </button>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseEther } from "viem";
 import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 const STRATEGIC_TOKENS = [
   { name: "BNKR", address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b" },
@@ -24,7 +25,8 @@ export function RebalancePanel() {
   });
 
   const handleRebalance = async () => {
-    if (!amount || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -32,8 +34,10 @@ export function RebalancePanel() {
         args: [selectedToken, parseEther(amount)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      const name = STRATEGIC_TOKENS.find(t => t.address === selectedToken)?.name || "token";
+      notification.success(`Rebalanced ${amount} ${name}`);
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Rebalance failed");
     } finally {
       setIsPending(false);
     }
@@ -61,6 +65,7 @@ export function RebalancePanel() {
           <label className="label"><span className="label-text">Amount</span></label>
           <input
             type="number"
+            min="0"
             className="input input-bordered w-full"
             placeholder="1000"
             value={amount}
@@ -71,7 +76,7 @@ export function RebalancePanel() {
         <button
           className={`btn btn-warning mt-2 ${isPending ? "loading" : ""}`}
           onClick={handleRebalance}
-          disabled={isPending || !amount}
+          disabled={isPending || !amount || parseFloat(amount) <= 0}
         >
           {isPending ? "Executing..." : "Rebalance"}
         </button>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseUnits } from "viem";
 import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 export function BuybackUSDCPanel() {
   const [amount, setAmount] = useState("");
@@ -13,7 +14,8 @@ export function BuybackUSDCPanel() {
   });
 
   const handleBuyback = async () => {
-    if (!amount || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -21,8 +23,9 @@ export function BuybackUSDCPanel() {
         args: [parseUnits(amount, 6)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      notification.success("Buyback (USDC → TUSD) executed");
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Transaction failed");
     } finally {
       setIsPending(false);
     }
@@ -36,6 +39,7 @@ export function BuybackUSDCPanel() {
           <label className="label"><span className="label-text">USDC Amount</span></label>
           <input
             type="number"
+            min="0"
             step="1"
             className="input input-bordered w-full"
             placeholder="2000"
@@ -47,7 +51,7 @@ export function BuybackUSDCPanel() {
         <button
           className={`btn btn-primary mt-2 ${isPending ? "loading" : ""}`}
           onClick={handleBuyback}
-          disabled={isPending || !amount}
+          disabled={isPending || !amount || parseFloat(amount) <= 0}
         >
           {isPending ? "Executing..." : "Execute Buyback"}
         </button>

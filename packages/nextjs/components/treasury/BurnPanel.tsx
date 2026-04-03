@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseEther } from "viem";
 import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
 export function BurnPanel() {
   const [amount, setAmount] = useState("");
@@ -13,7 +14,8 @@ export function BurnPanel() {
   });
 
   const handleBurn = async () => {
-    if (!amount || isPending) return;
+    const val = parseFloat(amount);
+    if (!val || val <= 0 || isPending) return;
     setIsPending(true);
     try {
       await writeContractAsync({
@@ -21,8 +23,9 @@ export function BurnPanel() {
         args: [parseEther(amount)],
       });
       setAmount("");
-    } catch (e) {
-      console.error(e);
+      notification.success(`Burned ${amount} TUSD`);
+    } catch (e: any) {
+      notification.error(e?.shortMessage || e?.message || "Transaction failed");
     } finally {
       setIsPending(false);
     }
@@ -36,6 +39,7 @@ export function BurnPanel() {
           <label className="label"><span className="label-text">TUSD Amount</span></label>
           <input
             type="number"
+            min="0"
             step="1000000"
             className="input input-bordered w-full"
             placeholder="1000000"
@@ -47,7 +51,7 @@ export function BurnPanel() {
         <button
           className={`btn btn-error mt-2 ${isPending ? "loading" : ""}`}
           onClick={handleBurn}
-          disabled={isPending || !amount}
+          disabled={isPending || !amount || parseFloat(amount) <= 0}
         >
           {isPending ? "Burning..." : "Burn TUSD"}
         </button>

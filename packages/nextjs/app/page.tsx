@@ -13,10 +13,25 @@ import { RebalancePanel } from "../components/treasury/RebalancePanel";
 import { PermissionlessPanel } from "../components/treasury/PermissionlessPanel";
 import { StrategicTokenDetail } from "../components/treasury/StrategicTokenDetail";
 import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
+import { useScaffoldReadContract } from "~~/hooks/scaffold-eth";
 
 export default function TreasuryDashboard() {
   const { address, isConnected } = useAccount();
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
+
+  const { data: owner } = useScaffoldReadContract({
+    contractName: "TreasuryManagerV2",
+    functionName: "owner",
+  });
+
+  const { data: operator } = useScaffoldReadContract({
+    contractName: "TreasuryManagerV2",
+    functionName: "operator",
+  });
+
+  const isOwner = address && owner && address.toLowerCase() === owner.toLowerCase();
+  const isOperator = address && operator && address.toLowerCase() === operator.toLowerCase();
+  const isPrivileged = isOwner || isOperator;
 
   return (
     <div className="min-h-screen bg-base-200">
@@ -52,16 +67,24 @@ export default function TreasuryDashboard() {
               <OperatorCapsPanel />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-              <BuybackPanel />
-              <BuybackUSDCPanel />
-              <BurnPanel />
-            </div>
+            {isPrivileged ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                  <BuybackPanel />
+                  <BuybackUSDCPanel />
+                  <BurnPanel />
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-              <StakePanel />
-              <RebalancePanel />
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                  <StakePanel />
+                  <RebalancePanel />
+                </div>
+              </>
+            ) : (
+              <div className="alert alert-info mt-6">
+                <span>Connect as owner or operator to access treasury management actions.</span>
+              </div>
+            )}
 
             <div className="mt-6">
               <PermissionlessPanel />
