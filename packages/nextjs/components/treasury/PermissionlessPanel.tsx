@@ -1,0 +1,107 @@
+"use client";
+
+import { useState } from "react";
+import { parseEther, formatEther } from "viem";
+import { useScaffoldWriteContract, useScaffoldReadContract } from "~~/hooks/scaffold-eth";
+
+const STRATEGIC_TOKENS = [
+  { name: "BNKR", address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b" as const },
+  { name: "DRB", address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2" as const },
+  { name: "Clanker", address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb" as const },
+  { name: "KELLY", address: "0x50D2280441372486BeecdD328c1854743EBaCb07" as const },
+  { name: "CLAWD", address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07" as const },
+  { name: "JUNO", address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07" as const },
+  { name: "FELIX", address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07" as const },
+];
+
+export function PermissionlessPanel() {
+  const [selectedToken, setSelectedToken] = useState(STRATEGIC_TOKENS[0].address);
+  const [amount, setAmount] = useState("");
+  const [isPending, setIsPending] = useState(false);
+
+  const { writeContractAsync } = useScaffoldWriteContract({
+    contractName: "TreasuryManagerV2",
+  });
+
+  const { data: tokenInfo } = useScaffoldReadContract({
+    contractName: "TreasuryManagerV2",
+    functionName: "getKnownToken",
+    args: [selectedToken],
+  });
+
+  const handlePermissionless = async () => {
+    if (!amount || isPending) return;
+    setIsPending(true);
+    try {
+      await writeContractAsync({
+        functionName: "permissionlessRebalanceStrategicToken",
+        args: [selectedToken, parseEther(amount)],
+      });
+      setAmount("");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  const fallbackBps = tokenInfo ? Number(tokenInfo.fallbackUnlockedBps) : 0;
+  const fallbackPct = (fallbackBps / 100).toFixed(1);
+
+  return (
+    <div className="card bg-base-100 shadow-xl">
+      <div className="card-body">
+        <h2 className="card-title">Permissionless Rebalance</h2>
+        <p className="text-sm opacity-70">Anyone can call — immutable constraints</p>
+
+        <div className="form-control">
+          <label className="label"><span className="label-text">Token</span></label>
+          <select
+            className="select select-bordered w-full"
+            value={selectedToken}
+            onChange={(e) => setSelectedToken(e.target.value as any)}
+            disabled={isPending}
+          >
+            {STRATEGIC_TOKENS.map((t) => (
+              <option key={t.address} value={t.address}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {tokenInfo && (
+          <div className="stats stats-vertical shadow mt-2">
+            <div className="stat">
+              <div className="stat-title">Fallback Unlock</div>
+              <div className="stat-value text-lg">{fallbackPct}%</div>
+            </div>
+            <div className="stat">
+              <div className="stat-title">Deposits</div>
+              <div className="stat-value text-sm">
+                {Number(formatEther(tokenInfo.trackedDeposits)).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="form-control mt-2">
+          <label className="label"><span className="label-text">Amount</span></label>
+          <input
+            type="number"
+            className="input input-bordered w-full"
+            placeholder="1000"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            disabled={isPending}
+          />
+        </div>
+        <button
+          className={`btn btn-accent mt-2 ${isPending ? "loading" : ""}`}
+          onClick={handlePermissionless}
+          disabled={isPending || !amount}
+        >
+          {isPending ? "Executing..." : "Permissionless Rebalance"}
+        </button>
+      </div>
+    </div>
+  );
+}
