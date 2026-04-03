@@ -362,7 +362,7 @@ contract TreasuryManagerV2Test is Test {
 
     function test_burnTUSD_revertNotOperator() public {
         vm.prank(user);
-        vm.expectRevert(TreasuryManagerV2.NotOperator.selector);
+        vm.expectRevert(TreasuryManagerV2.NotOwnerOrOperator.selector);
         treasury.burnTUSD(1_000_000e18);
     }
 

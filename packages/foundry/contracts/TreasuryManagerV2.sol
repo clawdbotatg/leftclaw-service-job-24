@@ -209,7 +209,8 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
     }
 
     modifier onlyOperator() {
-        if (msg.sender != owner() && msg.sender != operator) revert NotOperator();
+        // NOTE: Also allows owner — owner has superset of operator permissions
+        if (msg.sender != owner() && msg.sender != operator) revert NotOwnerOrOperator();
         _;
     }
 
@@ -417,6 +418,11 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         emit RebalanceCapsUpdated();
     }
 
+    function setStrategicTokenEnabled(address token, bool _enabled) external onlyOwner {
+        if (!isStrategicToken[token]) revert TokenNotStrategic();
+        strategicTokens[token].enabled = _enabled;
+    }
+
     // ==================== ROLLING WINDOW HELPERS ====================
     function _effectiveRollingAmount(RollingWindow storage w) internal view returns (uint256) {
         uint256 elapsed = block.timestamp - w.windowStart;
@@ -460,7 +466,7 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         uint256 tusdBefore = IERC20(TUSD).balanceOf(address(this));
 
         // Approve and swap WETH -> TUSD via V3 pool
-        IERC20(WETH).approve(UNIVERSAL_ROUTER, amountIn);
+        IERC20(WETH).forceApprove(UNIVERSAL_ROUTER, amountIn);
         uint256 minOut = (amountIn * (BPS_DENOMINATOR - operatorSlippageBps)) / BPS_DENOMINATOR;
         _swapV3ExactIn(WETH, TUSD, TUSD_WETH_FEE, amountIn, minOut);
 
@@ -475,9 +481,9 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         uint256 tusdBefore = IERC20(TUSD).balanceOf(address(this));
 
         // Two-hop: USDC -> WETH -> TUSD
-        IERC20(USDC).approve(UNIVERSAL_ROUTER, amountIn);
+        IERC20(USDC).forceApprove(UNIVERSAL_ROUTER, amountIn);
         bytes memory path = abi.encodePacked(USDC, USDC_WETH_FEE, WETH, TUSD_WETH_FEE, TUSD);
-        uint256 minOut = 0; // slippage handled by operator caps
+        uint256 minOut = (amountIn * (BPS_DENOMINATOR - operatorSlippageBps)) / BPS_DENOMINATOR;
         _swapV3ExactInMultihop(path, amountIn, minOut);
 
         uint256 tusdReceived = IERC20(TUSD).balanceOf(address(this)) - tusdBefore;
@@ -496,7 +502,7 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
     function stakeTUSD(uint256 amount, uint256 poolId) external nonReentrant onlyOperator {
         if (amount == 0) revert ZeroAmount();
         _enforceOperatorCaps(amount, stakeTusdPerAction, stakeTusdWindow, stakeTusdPerDay);
-        IERC20(TUSD).approve(STAKING, amount);
+        IERC20(TUSD).forceApprove(STAKING, amount);
         IStaking(STAKING).stake(amount, poolId);
         emit StakeTUSD(amount, poolId);
     }
@@ -565,16 +571,18 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         uint256 wethForTusd = (wethReceived * REBALANCE_SPLIT_TUSD_BPS) / BPS_DENOMINATOR;
         uint256 wethForUsdc = wethReceived - wethForTusd;
 
-        // WETH -> TUSD
+        // WETH -> TUSD (apply rebalance slippage)
         uint256 tusdBefore = IERC20(TUSD).balanceOf(address(this));
-        IERC20(WETH).approve(UNIVERSAL_ROUTER, wethForTusd);
-        _swapV3ExactIn(WETH, TUSD, TUSD_WETH_FEE, wethForTusd, 0);
+        IERC20(WETH).forceApprove(UNIVERSAL_ROUTER, wethForTusd);
+        uint256 minTusd = (wethForTusd * (BPS_DENOMINATOR - rebalanceSlippageBps)) / BPS_DENOMINATOR;
+        _swapV3ExactIn(WETH, TUSD, TUSD_WETH_FEE, wethForTusd, minTusd);
         uint256 tusdReceived = IERC20(TUSD).balanceOf(address(this)) - tusdBefore;
 
-        // WETH -> USDC -> owner
+        // WETH -> USDC -> owner (apply rebalance slippage)
         uint256 usdcBefore = IERC20(USDC).balanceOf(owner());
-        IERC20(WETH).approve(UNIVERSAL_ROUTER, wethForUsdc);
-        _swapV3ExactInToRecipient(WETH, USDC, USDC_WETH_FEE, wethForUsdc, 0, owner());
+        IERC20(WETH).forceApprove(UNIVERSAL_ROUTER, wethForUsdc);
+        uint256 minUsdc = (wethForUsdc * (BPS_DENOMINATOR - rebalanceSlippageBps)) / BPS_DENOMINATOR;
+        _swapV3ExactInToRecipient(WETH, USDC, USDC_WETH_FEE, wethForUsdc, minUsdc, owner());
         uint256 usdcReceived = IERC20(USDC).balanceOf(owner()) - usdcBefore;
 
         // Update accounting
@@ -617,11 +625,13 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         uint256 wethForTusd = (wethReceived * REBALANCE_SPLIT_TUSD_BPS) / BPS_DENOMINATOR;
         uint256 wethForUsdc = wethReceived - wethForTusd;
 
-        IERC20(WETH).approve(UNIVERSAL_ROUTER, wethForTusd);
-        _swapV3ExactIn(WETH, TUSD, TUSD_WETH_FEE, wethForTusd, 0);
+        IERC20(WETH).forceApprove(UNIVERSAL_ROUTER, wethForTusd);
+        uint256 minTusd = (wethForTusd * (BPS_DENOMINATOR - rebalanceSlippageBps)) / BPS_DENOMINATOR;
+        _swapV3ExactIn(WETH, TUSD, TUSD_WETH_FEE, wethForTusd, minTusd);
 
-        IERC20(WETH).approve(UNIVERSAL_ROUTER, wethForUsdc);
-        _swapV3ExactInToRecipient(WETH, USDC, USDC_WETH_FEE, wethForUsdc, 0, owner());
+        IERC20(WETH).forceApprove(UNIVERSAL_ROUTER, wethForUsdc);
+        uint256 minUsdc = (wethForUsdc * (BPS_DENOMINATOR - rebalanceSlippageBps)) / BPS_DENOMINATOR;
+        _swapV3ExactInToRecipient(WETH, USDC, USDC_WETH_FEE, wethForUsdc, minUsdc, owner());
 
         // Update accounting
         config.totalSold += amount;
@@ -644,8 +654,8 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         if (balance == 0) revert ZeroAmount();
 
         uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
-        IERC20(token).approve(UNIVERSAL_ROUTER, balance);
-        _swapV3ExactInMultihop(pathToWETH, balance, 0);
+        IERC20(token).forceApprove(UNIVERSAL_ROUTER, balance);
+        _swapV3ExactInMultihop(pathToWETH, balance, 0); // Dead pool token — minOut=0 acceptable
         uint256 wethReceived = IERC20(WETH).balanceOf(address(this)) - wethBefore;
 
         config.totalSold += balance;
@@ -780,8 +790,8 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
         if (config.isV4) {
             _swapV4(config, amount);
         } else {
-            IERC20(config.token).approve(UNIVERSAL_ROUTER, amount);
-            _swapV3ExactIn(config.token, WETH, config.v3Fee, amount, 0);
+            IERC20(config.token).forceApprove(UNIVERSAL_ROUTER, amount);
+            _swapV3ExactIn(config.token, WETH, config.v3Fee, amount, 0); // Slippage checked via WETH caps post-swap
         }
 
         wethReceived = IERC20(WETH).balanceOf(address(this)) - wethBefore;
@@ -834,7 +844,7 @@ contract TreasuryManagerV2 is Ownable2Step, ReentrancyGuard {
 
     function _swapV4(StrategicTokenConfig storage config, uint256 amount) internal {
         // Step 1: Approve token to Permit2
-        IERC20(config.token).approve(PERMIT2, amount);
+        IERC20(config.token).forceApprove(PERMIT2, amount);
 
         // Step 2: Permit2 approve to Universal Router
         IPermit2(PERMIT2).approve(config.token, UNIVERSAL_ROUTER, uint160(amount), uint48(block.timestamp + 1800));
