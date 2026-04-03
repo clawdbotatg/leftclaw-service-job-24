@@ -1,83 +1,115 @@
-# 🏗 Scaffold-ETH 2
+# TreasuryManagerV2
 
-<h4 align="center">
-  <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
-</h4>
+Onchain treasury management for ₸USD (TurboUSD) on Base.
 
-🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
+**Contract:** [`0x634328008345f1e63571dd24cd818a8f1947b628`](https://basescan.org/address/0x634328008345f1e63571dd24cd818a8f1947b628) — Base (8453)
 
-> [!NOTE]
-> 🤖 Scaffold-ETH 2 is AI-ready! It has everything agents need to build on Ethereum. Check `.agents/`, `.claude/`, `.opencode` or `.cursor/` for more info.
+**Live App:** [IPFS](https://bafybeihrcfbkavocnmfp3ztvrt6nrjece6xc3s5w6hqiykhdsqsyhscd5e.ipfs.community.bgipfs.com/)
 
-⚙️ Built using NextJS, RainbowKit, Foundry, Wagmi, Viem, and Typescript.
+---
 
-- ✅ **Contract Hot Reload**: Your frontend auto-adapts to your smart contract as you edit it.
-- 🪝 **[Custom hooks](https://docs.scaffoldeth.io/hooks/)**: Collection of React hooks wrapper around [wagmi](https://wagmi.sh/) to simplify interactions with smart contracts with typescript autocompletion.
-- 🧱 [**Components**](https://docs.scaffoldeth.io/components/): Collection of common web3 components to quickly build your frontend.
-- 🔥 **Burner Wallet & Local Faucet**: Quickly test your application with a burner wallet and local faucet.
-- 🔐 **Integration with Wallet Providers**: Connect to different wallet providers and interact with the Ethereum network.
+## Architecture
 
-![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
+### Core Operations
+- **Buyback:** Swap WETH or USDC → TUSD via Uniswap V3 pools through Universal Router
+- **Burn:** Send TUSD to dead address (0xdead...)
+- **Stake/Unstake:** Deposit TUSD into staking contract
+- **Operator caps:** Rolling-window rate limits per action/day with configurable cooldowns
 
-## Requirements
+### Strategic Token Management (7 tokens)
+The contract holds 7 strategic tokens (BNKR, DRB, Clanker, KELLY, CLAWD, JUNO, FELIX) with rebalance mechanics:
 
-Before you begin, you need to install the following tools:
+- **Normal rebalance** (owner/operator): Sell strategic token → WETH, split WETH into TUSD (85%) + USDC to owner (15%). Rate-limited by tranche (5% of deposits per action) and rolling WETH caps.
+- **Permissionless rebalance** (anyone): Unlocks gradually via fallback ratchet when operator is inactive for 14+ days. Immutable caps: 0.1 WETH/action, 1 WETH/day, 5% slippage.
+- **V3 + V4 routing:** Tokens with V3 pools swap directly; tokens with V4 pools route through PoolManager via Permit2 → Universal Router.
 
-- [Node (>= v20.18.3)](https://nodejs.org/en/download/)
-- Yarn ([v1](https://classic.yarnpkg.com/en/docs/install/) or [v2+](https://yarnpkg.com/getting-started/install))
-- [Git](https://git-scm.com/downloads)
+### Routing
+- V3 tokens: `token → WETH` via `IUniversalRouter.execute` (V3_SWAP_EXACT_IN)
+- V4 tokens: `token → WETH` via Permit2 approval + `IUniversalRouter.execute` (V4_SWAP commands with SETTLE_ALL/TAKE_ALL)
+- TUSD buyback: `WETH → TUSD` (V3, 10000 fee tier)
+- USDC buyback: `USDC → WETH → TUSD` (V3 multihop)
 
-## Quickstart
+### Security Model
+- **Ownable2Step:** Two-phase ownership transfer
+- **ReentrancyGuard:** All state-modifying functions
+- **Rolling windows:** Per-day and per-action caps for all operator actions
+- **Operator cooldown:** Minimum time between operator actions
+- **Slippage protection:** Configurable `operatorSlippageBps` and `rebalanceSlippageBps` on all swaps
+- **Rescue delay:** 90-day dead pool rescue for tokens with no pool activity
+- **Permissionless fallback:** If operator goes dark, anyone can rebalance with immutable conservative limits
+- **SafeERC20 forceApprove:** All token approvals use OZ 5.6.1 `forceApprove()`
 
-To get started with Scaffold-ETH 2, follow the steps below:
+---
 
-1. Install dependencies if it was skipped in CLI:
+## Run Locally
 
-```
-cd my-dapp-example
+```bash
+# Clone and install
+git clone https://github.com/clawdbotatg/leftclaw-service-job-24
+cd leftclaw-service-job-24
 yarn install
+
+# Run tests (56 tests)
+cd packages/foundry
+forge test
+
+# Run frontend
+cd ../nextjs
+yarn dev
+# Open http://localhost:3000
 ```
 
-2. Run a local network in the first terminal:
+The frontend reads from the deployed contract on Base via `externalContracts.ts`. Connect a Base wallet to interact.
 
+---
+
+## Deploy
+
+### Contract
+```bash
+cd packages/foundry
+# Edit DeployYourContract.s.sol OWNER constant if needed
+forge script script/DeployYourContract.s.sol \
+  --rpc-url https://mainnet.base.org \
+  --broadcast \
+  --private-key <deployer-private-key>
+
+# Verify
+forge verify-contract <deployed-address> TreasuryManagerV2 \
+  --chain-id 8453 \
+  --constructor-args $(cast abi-encode "constructor(address)" <owner-address>)
 ```
-yarn chain
+
+### Frontend (IPFS via bgipfs)
+```bash
+cd packages/nextjs
+rm -rf out .next
+NEXT_PUBLIC_IPFS_BUILD=true NODE_OPTIONS="--require ./polyfill-localstorage.cjs" npm run build
+bgipfs upload out --config ~/.bgipfs/credentials.json
 ```
 
-This command starts a local Ethereum network using Foundry. The network runs on your local machine and can be used for testing and development. You can customize the network configuration in `packages/foundry/foundry.toml`.
+---
 
-3. On a second terminal, deploy the test contract:
+## Post-Deployment Setup
 
-```
-yarn deploy
-```
+After deploying, the owner should:
+1. Call `setOperator(address)` to designate an operator bot
+2. Optionally adjust caps via `setCoreCapSettings(...)` and `setRebalanceCapSettings(...)`
+3. Deposit strategic tokens via `depositStrategicToken(token, amount)` — anyone can call, but deposits are tracked for rebalance limits
 
-This command deploys a test smart contract to the local network. The contract is located in `packages/foundry/contracts` and can be modified to suit your needs. The `yarn deploy` command uses the deploy script located in `packages/foundry/script` to deploy the contract to the network. You can also customize the deploy script.
+---
 
-4. On a third terminal, start your NextJS app:
+## Key Constants
 
-```
-yarn start
-```
-
-Visit your app on: `http://localhost:3000`. You can interact with your smart contract using the `Debug Contracts` page. You can tweak the app config in `packages/nextjs/scaffold.config.ts`.
-
-Run smart contract test with `yarn foundry:test`
-
-- Edit your smart contracts in `packages/foundry/contracts`
-- Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
-- Edit your deployment scripts in `packages/foundry/script`
-
-
-## Documentation
-
-Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
-
-To know more about its features, check out our [website](https://scaffoldeth.io).
-
-## Contributing to Scaffold-ETH 2
-
-We welcome contributions to Scaffold-ETH 2!
-
-Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+| Parameter | Value |
+|-----------|-------|
+| Buyback WETH/day | 2 ETH |
+| Buyback USDC/day | 5000 USDC |
+| Operator cooldown | 5 min |
+| Slippage (buyback) | 3% |
+| Slippage (rebalance) | 3% |
+| Strategic tranche | 5% of deposits |
+| Permissionless cap | 0.1 WETH/action, 1 WETH/day |
+| Permissionless slippage | 5% |
+| Fallback initial delay | 14 days |
+| Rescue delay | 90 days |
