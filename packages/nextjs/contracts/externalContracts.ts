@@ -1,6 +1,6 @@
 import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
-const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // Will be set after deployment
+const CONTRACT_ADDRESS = "0x634328008345f1e63571dd24cd818a8f1947b628";
 
 const externalContracts = {
   8453: {
@@ -1123,6 +1123,24 @@ const externalContracts = {
         "name": "_operator",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setStrategicTokenEnabled",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_enabled",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [],
